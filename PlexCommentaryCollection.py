@@ -77,8 +77,6 @@ class CommentaryCollection:
             if (math.floor(end - start) == next_update):
                 print(f'Processed {processed} of {movie_count} ({((processed / movie_count) * 100):.2f}%) in {math.floor(end - start)} seconds')
                 next_update += 2
-            if processed == 200:
-                break
 
         print(f'\nDone! Processed {processed} movie{"" if movie_count == 1 else "s"} in {time.time() - start:.2f} seconds')
         self.postprocess()
