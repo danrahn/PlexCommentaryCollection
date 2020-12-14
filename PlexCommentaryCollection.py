@@ -27,7 +27,7 @@ class CommentaryCollection:
         """
 
         self.valid = False
-        config_file = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__))) + os.sep + 'config.yml'
+        config_file = self.adjacent_file('config.yml')
         if not os.path.exists(config_file):
             print('Could not find config.yml! Make sure it\'s in the same directory as this script')
             return
@@ -237,12 +237,26 @@ class CommentaryCollection:
 
         limit_2ch = self.get_yes_no('Only show additional movies with a 2 channel track (most common commentary format)')
         interactive = self.get_yes_no('Interactively add additional movies to collection')
+        track_ignored = False
+        if interactive:
+            track_ignored = self.get_yes_no('Use and update ignore list')
+        ignored = {} # Dict for O(n) access
+        if track_ignored and os.path.exists(self.adjacent_file('ignore.txt')):
+            with open(self.adjacent_file('ignore.txt')) as f:
+                lines = f.readlines()
+                for line in lines:
+                    ignored[line.strip()] = True
+
         add_queue = []
+        eligible_tracks = 0
+        ignored_count = 0
         for movie in self.commentaries.keys():
             tracks = self.commentaries[movie]['all_tracks']
             if len(tracks) < 2:
                 continue
             if self.collection_name in self.commentaries[movie]['collections']:
+                continue
+            if track_ignored and self.commentaries[movie]['id'] in ignored:
                 continue
 
             # Also consider unknown languages
@@ -252,6 +266,7 @@ class CommentaryCollection:
                 two_channel_check = len([track for track in tracks if track['channels'] == 2])
 
             if eng_tracks > 1 and two_channel_check:
+                eligible_tracks += 1
                 print(f'{movie} has {eng_tracks} English tracks ({len(tracks)} total)')
                 for track in tracks:
                     if self.verbose or track['lang'] in ['eng', 'unknown']:
@@ -259,7 +274,19 @@ class CommentaryCollection:
                 if interactive and self.get_yes_no(f'\nAdd "{movie}" to "{self.collection_name}"'):
                     add_queue.append(movie)
                     print(f'Adding {movie} to append queue\n')
+                elif track_ignored:
+                    ignored[self.commentaries[movie]['id']] = True
+                    ignored_count += 1
+                print()
         
+        if ignored_count > 1:
+            print(f'Adding {ignored_count} movie{"" if ignored_count == 1 else "s"} to the ignore list')
+            with open(self.adjacent_file('ignore.txt'), 'w+') as f:
+                f.writelines([ignore + '\n' for ignore in ignored])
+
+        if eligible_tracks == 0:
+            print("Didn't find anything to add")
+
         if len(add_queue) == 0:
             return
         
@@ -277,6 +304,11 @@ class CommentaryCollection:
             ch = response.lower()[0] if len(response) > 0 else 'x'
             if ch in ['y', 'n']:
                 return ch == 'y'
+
+    def adjacent_file(self, filename):
+        """Returns the file path for a file that is in the same directory as this script"""
+
+        return os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__))) + os.sep + filename
 
 if __name__ == '__main__':
     runner = CommentaryCollection()
