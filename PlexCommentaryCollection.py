@@ -109,8 +109,7 @@ class CommentaryCollection:
         for media in video.findall('Media'):
             self.find_commentary_tracks(media, self.commentaries[movie_title])
 
-        if movie_title in self.commentaries:
-            self.commentaries[movie_title]['collections'] = self.get_collections(video)
+        self.commentaries[movie_title]['collections'] = self.get_collections(video)
 
 
     def get_metadata(self, loc):
@@ -237,6 +236,8 @@ class CommentaryCollection:
             return
 
         limit_2ch = self.get_yes_no('Only show additional movies with a 2 channel track (most common commentary format)')
+        interactive = self.get_yes_no('Interactively add additional movies to collection')
+        add_queue = []
         for movie in self.commentaries.keys():
             tracks = self.commentaries[movie]['all_tracks']
             if len(tracks) < 2:
@@ -255,6 +256,17 @@ class CommentaryCollection:
                 for track in tracks:
                     if self.verbose or track['lang'] in ['eng', 'unknown']:
                         print(f'\t{track["name"]} ({track["lang"]}) - {track["channels"]} channels')
+                if interactive and self.get_yes_no(f'\nAdd "{movie}" to "{self.collection_name}"'):
+                    add_queue.append(movie)
+                    print(f'Adding {movie} to append queue\n')
+        
+        if len(add_queue) == 0:
+            return
+        
+        print(f'\nAdding {len(add_queue)} movies to "{self.collection_name}')
+        for movie in add_queue:
+            self.add_to_commentary_collection(self.commentaries[movie]['id'], self.commentaries[movie]['collections'])
+            print(f'Added "{movie}" to "{self.collection_name}')
 
 
     def get_yes_no(self, prompt):
