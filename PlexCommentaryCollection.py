@@ -40,14 +40,15 @@ class CommentaryCollection:
             return
 
         self.token = config['token']
-        self.host = CommentaryCollection.get_config_value(config, 'host', 'http://localhost:32400')
-        self.section = CommentaryCollection.get_config_value(config, 'library_section', '1')
-        self.collection_name = CommentaryCollection.get_config_value(config, 'collection_name', 'Commentary Collection')
-        self.keywords = [keyword.lower() for keyword in CommentaryCollection.get_config_value(config, 'keywords', ['commentary'])]
+        self.host = self.get_config_value(config, 'host', 'http://localhost:32400')
+        self.section = self.get_config_value(config, 'library_section', '1')
+        self.collection_name = self.get_config_value(config, 'collection_name', 'Commentary Collection')
+        self.keywords = [keyword.lower() for keyword in self.get_config_value(config, 'keywords', ['commentary'])]
+        self.verbose = self.get_config_value(config, 'verbose', False)
         self.valid = True
 
 
-    def get_config_value(config, key, default):
+    def get_config_value(self, config, key, default):
         """Returns a value from the given config, or the default value if not present"""
 
         if key not in config:
@@ -104,12 +105,9 @@ class CommentaryCollection:
 
         video = metadata.find('Video')
         movie_title = video.attrib['title']
+        self.commentaries[movie_title] = { 'collections': [], 'commentary': [], 'id': metadata_id, 'all_tracks' : [] }
         for media in video.findall('Media'):
-            tracks = self.find_commentary_tracks(media)
-            if (len(tracks) != 0):
-                if movie_title not in self.commentaries:
-                    self.commentaries[movie_title] = { 'collections': [], 'commentary': [], 'id': metadata_id }
-                self.commentaries[movie_title]['commentary'] = tracks
+            self.find_commentary_tracks(media, self.commentaries[movie_title])
 
         if movie_title in self.commentaries:
             self.commentaries[movie_title]['collections'] = self.get_collections(video)
@@ -139,26 +137,34 @@ class CommentaryCollection:
         return content
 
 
-    def find_commentary_tracks(self, media):
+    def find_commentary_tracks(self, media, data):
         """Searches the audio tracks of the given media for the keywords specified in the config file
 
         Returns a list of commentary tracks that were found
         """
 
-        commentary_tracks = []
         audio_streams = media.findall('Part/Stream[@streamType="2"]')
         for stream in audio_streams:
-            for search in ['title', 'extendedDisplayTitle']:
+            track_name = stream.attrib['title' if 'title' in stream.attrib else ('displayTitle' if 'displayTitle' in stream.attrib else 'extendedDisplayTitle')]
+            track_language = stream.attrib['languageCode'] if 'languageCode' in stream.attrib else 'unknown'
+            track_channels = int(stream.attrib['channels']) if 'channels' in stream.attrib else 0
+            data['all_tracks'].append({ 'name' : track_name, 'lang' : track_language, 'channels' : track_channels })
+            for search in ['title', 'displayTitle', 'extendedDisplayTitle']:
                 if search not in stream.attrib:
                     continue
 
                 title = stream.attrib[search].lower()
-                if title.find('commentary') == -1:
+                found_commentary = False
+                for keyword in self.keywords:
+                    if title.find(keyword) != -1:
+                        found_commentary = True
+                        break
+
+                if not found_commentary:
                     continue
 
-                commentary_tracks.append(stream.attrib[search])
+                data['commentary'].append(stream.attrib[search])
                 break
-        return commentary_tracks
 
 
     def get_collections(self, video):
@@ -176,9 +182,14 @@ class CommentaryCollection:
         Prints out all commentary tracks and adds the media to the commentary collection if it's not already in it
         """
 
-        print(f'\nFound {len(self.commentaries)} movie{"" if len(self.commentaries) == 1 else "s"} with commentaries')
+        commentary_count = len([movie for movie in self.commentaries if len(self.commentaries[movie]['commentary']) > 0])
+        print(f'\nFound {commentary_count} movie{"" if commentary_count == 1 else "s"} with commentaries')
+        added = []
         for movie in self.commentaries.keys():
             tracks = self.commentaries[movie]['commentary']
+            if len(tracks) == 0:
+                continue
+
             collections = self.commentaries[movie]['collections']
             print(f'{movie} has {len(tracks)} commentary track{"s" if len(tracks) > 1 else ""}', end='')
             if self.collection_name in collections:
@@ -186,8 +197,18 @@ class CommentaryCollection:
             else:
                 print(f', adding to {self.collection_name}')
                 self.add_to_commentary_collection(self.commentaries[movie]['id'], collections)
-            for track in tracks:
-                print(f'\t{track}')
+                collections.append(self.collection_name)
+                added.append(movie)
+            if self.verbose:
+                for track in tracks:
+                    print(f'\t{track}')
+        print(f'\nAdded {len(added)} movies to collection')
+        if self.verbose:
+            for movie in added:
+                print(f'\t{movie}')
+
+        self.show_more_tracks()
+
 
 
     def add_to_commentary_collection(self, metadata_id, collections):
@@ -200,8 +221,50 @@ class CommentaryCollection:
         url += f'&X-Plex-Token={self.token}'
         options = requests.options(url)
         put = requests.put(url)
-
+        put.close() # Are the close statements necessary?
+        options.close()
         return
+
+
+    def show_more_tracks(self):
+        """
+        Optionally shows the user additional movies that have not been
+        added to the collection, but contain 2+ English audio tracks
+        """
+
+        show_more = self.get_yes_no('Show additional movies with 2+ English audio tracks')
+        if not show_more:
+            return
+
+        limit_2ch = self.get_yes_no('Only show additional movies with a 2 channel track (most common commentary format)')
+        for movie in self.commentaries.keys():
+            tracks = self.commentaries[movie]['all_tracks']
+            if len(tracks) < 2:
+                continue
+            if self.collection_name in self.commentaries[movie]['collections']:
+                continue
+
+            # Also consider unknown languages
+            eng_tracks = len([track for track in tracks if track['lang'] in ['eng', 'unknown']])
+            two_channel_check = True
+            if limit_2ch:
+                two_channel_check = len([track for track in tracks if track['channels'] == 2])
+
+            if eng_tracks > 1 and two_channel_check:
+                print(f'{movie} has {eng_tracks} English tracks ({len(tracks)} total)')
+                for track in tracks:
+                    if self.verbose or track['lang'] in ['eng', 'unknown']:
+                        print(f'\t{track["name"]} ({track["lang"]}) - {track["channels"]} channels')
+
+
+    def get_yes_no(self, prompt):
+        """Prompt the user for a yes/no response, continuing to show the prompt until a value that starts with 'y' or 'n' is entered"""
+
+        while True:
+            response = input(f'{prompt} (y/n)? ')
+            ch = response.lower()[0] if len(response) > 0 else 'x'
+            if ch in ['y', 'n']:
+                return ch == 'y'
 
 if __name__ == '__main__':
     runner = CommentaryCollection()

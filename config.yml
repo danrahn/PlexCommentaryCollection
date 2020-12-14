@@ -4,3 +4,4 @@ token: <token>
 collection_name: Commentary Collection
 keywords:
   - Commentary
+verbose: False # This should probably be a command line param
