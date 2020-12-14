@@ -67,16 +67,17 @@ class CommentaryCollection:
         print(f'Found {movie_count} movies to parse')
         processed = 0
         start = time.time()
-        next_update = 2
+        update_interval = 2
+        next_update = update_interval
         for movie in root:
             processed += 1
 
             self.process_movie(movie)
 
             end = time.time()
-            if (math.floor(end - start) == next_update):
-                print(f'Processed {processed} of {movie_count} ({((processed / movie_count) * 100):.2f}%) in {math.floor(end - start)} seconds')
-                next_update += 2
+            if (math.floor(end - start) >= next_update):
+                next_update += update_interval
+                print(f'Processed {processed} of {movie_count} ({((processed / movie_count) * 100):.2f}%) in {(end - start):.1f} seconds')
 
         print(f'\nDone! Processed {processed} movie{"" if movie_count == 1 else "s"} in {time.time() - start:.2f} seconds')
         self.postprocess()
