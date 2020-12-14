@@ -1,0 +1,6 @@
+host: http://localhost:32400
+library_section: 1
+token: <token>
+collection_name: Commentary Collection
+keywords:
+  - Commentary
