@@ -1,7 +1,7 @@
 host: http://localhost:32400
 library_section: 1
 token: <token>
-collection_name: Commentary Collection
+collection: Commentary Collection
 keywords:
   - Commentary
 verbose: False # This should probably be a command line param
