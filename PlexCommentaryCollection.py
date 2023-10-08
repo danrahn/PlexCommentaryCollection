@@ -116,7 +116,7 @@ class CommentaryCollection:
         update_interval = 2
         next_update = update_interval
         groups = [root[i:min(item_count, i + 50)] for i in range(0, item_count, 50)]
-        print(f'Breaking into {len(groups)} for parsing')
+        print(f'Breaking into {len(groups)} groups for parsing')
         for group in groups:
             processed += 1
 
