@@ -115,15 +115,17 @@ class CommentaryCollection:
         start = time.time()
         update_interval = 2
         next_update = update_interval
-        for item in root:
+        groups = [root[i:min(item_count, i + 50)] for i in range(0, item_count, 50)]
+        print(f'Breaking into {len(groups)} for parsing')
+        for group in groups:
             processed += 1
 
-            self.process_single_item(item)
+            self.process_item_group(group)
 
             end = time.time()
             if (math.floor(end - start) >= next_update):
                 next_update += update_interval
-                print(f'Processed {processed} of {item_count} ({((processed / item_count) * 100):.2f}%) in {(end - start):.1f} seconds')
+                print(f'Processed {processed} of {len(groups)} ({((processed / len(groups)) * 100):.2f}%) in {(end - start):.1f} seconds')
 
         print(f'\nDone! Processed {processed} movie{"" if item_count == 1 else "s"} in {time.time() - start:.2f} seconds')
         self.postprocess()
@@ -208,22 +210,23 @@ class CommentaryCollection:
         return data
 
 
-    def process_single_item(self, media):
-        """Processes a single movie/episode, adding it to the commentaries dictionary if commentary tracks are found"""
+    def process_item_group(self, group):
+        key = group[0].attrib['key']
+        if len(group) > 1:
+            key += ',' + ','.join([item.attrib['ratingKey'] for item in group[1:]])
+        metadataItems = self.get_metadata(key)['Metadata']
+        for metadata in metadataItems:
+            metadata_id = metadata['ratingKey']
+            if not metadata:
+                return
 
-        metadata = self.get_metadata(media.attrib['key'])['Metadata'][0]
-        metadata_id = metadata['ratingKey']
-        # metadata_id = metadata_id[metadata_id.rfind('/') + 1:]
-        if not metadata:
-            return
+            media_title = metadata['title']
+            if self.section_type == 'show':
+                media_title = f'{metadata["grandparentTitle"]} - S{str(metadata["parentIndex"]).rjust(2, "0")}E{str(metadata["index"]).rjust(2, "0")} - {media_title}'
+            self.commentaries[media_title] = { 'collections': [], 'commentary': [], 'id': metadata_id, 'all_tracks' : [[] for _ in range(len(metadata['Media']))] }
+            self.find_commentary_tracks(metadata, self.commentaries[media_title])
 
-        media_title = metadata['title']
-        if self.section_type == 'show':
-            media_title = f'{metadata["grandparentTitle"]} - S{str(metadata["parentIndex"]).rjust(2, "0")}E{str(metadata["index"]).rjust(2, "0")} - {media_title}'
-        self.commentaries[media_title] = { 'collections': [], 'commentary': [], 'id': metadata_id, 'all_tracks' : [[] for _ in range(len(metadata['Media']))] }
-        self.find_commentary_tracks(metadata, self.commentaries[media_title])
-
-        self.commentaries[media_title]['collections'] = self.get_collections(metadata)
+            self.commentaries[media_title]['collections'] = self.get_collections(metadata)
 
 
     def get_metadata(self, loc):
